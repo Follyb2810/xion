@@ -1,0 +1,76 @@
+export const chains = {
+  neutron: {
+    chainId: "neutron-1",
+    rpc: "https://rpc.neutron.org",
+    gasPrice: "0.025untrn",
+    contractAddress: "neutron1vexhaemuahp2hfvmfmrjem3ngzrcrea5w7q2vpzzyz2ykfzw7vpq7ygurd",
+  },
+  juno: {
+    chainId: "juno-1",
+    rpc: "https://rpc-juno.itastakers.com",
+    gasPrice: "0.025ujuno",
+    contractAddress: "juno1examplecontractaddress",
+  },
+  osmosis: {
+    chainId: "osmosis-1",
+    rpc: "https://rpc-osmosis.blockapsis.com",
+    gasPrice: "0.025uosmo",
+    contractAddress: "osmo1examplecontractaddress",
+  },
+};
+import { SigningCosmWasmClient } from "@cosmjs/cosmwasm-stargate";
+import { GasPrice } from "@cosmjs/stargate";
+import { chains } from "@/config/chains"; // Import chain configurations
+
+const getClient = async (contractAddress: string) => {
+  if (!window.keplr) throw new Error("Please connect your wallet first.");
+
+  // Find the chain based on the contract address
+  const chain = Object.values(chains).find((c) => c.contractAddress === contractAddress);
+
+  if (!chain) throw new Error("Unsupported contract address.");
+
+  // Enable Keplr for the selected chain
+  await window.keplr.enable(chain.chainId);
+
+  const offlineSigner = window.keplr.getOfflineSigner(chain.chainId);
+  return SigningCosmWasmClient.connectWithSigner(chain.rpc, offlineSigner, {
+    gasPrice: GasPrice.fromString(chain.gasPrice),
+  });
+};
+export const initEscrow = async (
+  userWalletAddress: string,
+  amount: string,
+  sellerAddress: string,
+  contractAddress: string
+) => {
+  try {
+    const client = await getClient(contractAddress);
+
+    if (!amount || Number(amount) <= 0) {
+      throw new Error("Invalid amount: must be greater than zero.");
+    }
+
+    const formattedAmount = Math.floor(Number(amount) * 1e6).toString();
+
+    const msg = {
+      initiate_escrow: {
+        seller: sellerAddress,
+        amount: formattedAmount,
+      },
+    };
+
+    const chain = Object.values(chains).find((c) => c.contractAddress === contractAddress);
+    if (!chain) throw new Error("Unsupported contract address.");
+
+    const funds = [{ denom: chain.gasPrice.split("0.025")[1], amount: formattedAmount }];
+
+    const result = await client.execute(userWalletAddress, contractAddress, msg, "auto", undefined, funds);
+
+    console.log("Escrow initiated:", result);
+    return result;
+  } catch (error) {
+    console.error("Error initiating escrow:", error);
+    return null;
+  }
+};
